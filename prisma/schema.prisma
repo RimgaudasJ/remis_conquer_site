@@ -1,0 +1,149 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum SessionRole {
+  PLAYER
+  GM
+}
+
+enum WikiCategory {
+  RULES
+  LORE
+  CARDS
+  FACTIONS
+}
+
+model Room {
+  id         String          @id @default(cuid())
+  name       String
+  code       String          @unique
+  gmCodeHash String
+  players    Player[]
+  items      Item[]
+  purchases  Purchase[]
+  wikiPages  WikiPage[]
+  sessions   DeviceSession[]
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+}
+
+model Player {
+  id        String           @id @default(cuid())
+  roomId    String
+  room      Room             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name      String
+  gold      Int              @default(0)
+  mana      Int              @default(0)
+  influence Int              @default(0)
+  inventory InventoryEntry[]
+  purchases Purchase[]
+  statuses  StatusEffect[]
+  counters  PlayerCounter[]
+  sessions  DeviceSession[]
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  @@unique([roomId, name])
+}
+
+model Item {
+  id            String           @id @default(cuid())
+  roomId        String
+  room          Room             @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  name          String
+  description   String
+  effectSummary String
+  costGold      Int              @default(0)
+  costMana      Int              @default(0)
+  costInfluence Int              @default(0)
+  inventory     InventoryEntry[]
+  purchases     Purchase[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+}
+
+model InventoryEntry {
+  id        String   @id @default(cuid())
+  playerId  String
+  itemId    String
+  quantity  Int      @default(1)
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([playerId, itemId])
+}
+
+model Purchase {
+  id             String   @id @default(cuid())
+  roomId         String
+  playerId       String
+  itemId         String
+  goldSpent      Int      @default(0)
+  manaSpent      Int      @default(0)
+  influenceSpent Int      @default(0)
+  purchasedAt    DateTime @default(now())
+  room           Room     @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  player         Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  item           Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model StatusEffect {
+  id        String   @id @default(cuid())
+  playerId  String
+  label     String
+  detail    String
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model PlayerCounter {
+  id        String   @id @default(cuid())
+  playerId  String
+  label     String
+  value     Int      @default(0)
+  minValue  Int      @default(0)
+  maxValue  Int?
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model WikiPage {
+  id        String       @id @default(cuid())
+  roomId    String?
+  title     String
+  slug      String       @unique
+  category  WikiCategory
+  excerpt   String
+  body      String
+  room      Room?        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model DeviceSession {
+  id        String      @id @default(cuid())
+  roomId    String
+  playerId  String?
+  role      SessionRole
+  tokenHash String      @unique
+  expiresAt DateTime
+  room      Room        @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  player    Player?     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+}
