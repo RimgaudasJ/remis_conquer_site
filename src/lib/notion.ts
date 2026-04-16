@@ -20,6 +20,12 @@ type NotionProperty = {
   multi_select?: { name?: string }[];
   number?: number | null;
   relation?: { id: string }[];
+  url?: string | null;
+  files?: Array<{
+    type?: string;
+    file?: { url?: string };
+    external?: { url?: string };
+  }>;
 };
 
 type NotionPage = {
@@ -46,6 +52,12 @@ export type UnitSeed = {
   spellIds: string[];
   description: string;
   effects: string;
+  imageUrl: string | null;
+  stats: {
+    hp: number;
+    damage: number;
+    speed: number;
+  };
   cost: {
     gold: number;
     mana: number;
@@ -56,6 +68,23 @@ export type UnitSeed = {
 function getEnv(name: string) {
   const value = process.env[name]?.trim();
   return value ? value : null;
+}
+
+function isNotionDebugEnabled() {
+  return getEnv("NOTION_DEBUG") === "true";
+}
+
+function logNotionDebug(message: string, details?: Record<string, unknown>) {
+  if (!isNotionDebugEnabled()) {
+    return;
+  }
+
+  if (details) {
+    console.warn(`[notion] ${message}`, details);
+    return;
+  }
+
+  console.warn(`[notion] ${message}`);
 }
 
 function getNotionApiKey() {
@@ -156,6 +185,40 @@ function propertyRelationIds(property?: NotionProperty): string[] {
   return property.relation?.map((relation) => relation.id).filter(Boolean) ?? [];
 }
 
+function propertyUrl(property?: NotionProperty) {
+  if (!property) {
+    return "";
+  }
+
+  if (property.type === "url") {
+    return property.url?.trim() ?? "";
+  }
+
+  return propertyText(property);
+}
+
+function propertyFileUrl(property?: NotionProperty) {
+  if (!property || property.type !== "files") {
+    return "";
+  }
+
+  const first = property.files?.[0];
+
+  if (!first) {
+    return "";
+  }
+
+  if (first.type === "file") {
+    return first.file?.url?.trim() ?? "";
+  }
+
+  if (first.type === "external") {
+    return first.external?.url?.trim() ?? "";
+  }
+
+  return first.file?.url?.trim() ?? first.external?.url?.trim() ?? "";
+}
+
 function slugify(input: string) {
   return input
     .toLowerCase()
@@ -208,6 +271,10 @@ async function queryWikiDatabase(): Promise<NotionPage[]> {
   const wikiDatabaseId = getDatabaseId(["NOTION_WIKI_DATABASE_ID"]);
 
   if (!apiKey || !wikiDatabaseId) {
+    logNotionDebug("Wiki database query skipped due to missing env vars.", {
+      hasApiKey: Boolean(apiKey),
+      hasWikiDatabaseId: Boolean(wikiDatabaseId),
+    });
     return [];
   }
 
@@ -222,6 +289,10 @@ async function querySpellDatabase(): Promise<NotionPage[]> {
   ]);
 
   if (!apiKey || !spellDatabaseId) {
+    logNotionDebug("Spell database query skipped due to missing env vars.", {
+      hasApiKey: Boolean(apiKey),
+      hasSpellDatabaseId: Boolean(spellDatabaseId),
+    });
     return [];
   }
 
@@ -236,6 +307,10 @@ async function queryUnitDatabase(): Promise<NotionPage[]> {
   ]);
 
   if (!apiKey || !unitDatabaseId) {
+    logNotionDebug("Unit database query skipped due to missing env vars.", {
+      hasApiKey: Boolean(apiKey),
+      hasUnitDatabaseId: Boolean(unitDatabaseId),
+    });
     return [];
   }
 
@@ -248,24 +323,41 @@ async function queryDatabase(databaseId: string, apiKey: string): Promise<Notion
   let cursor: string | null = null;
 
   for (;;) {
-    const response = await fetch(
-      `${NOTION_API_BASE}/databases/${databaseId}/query`,
-      {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-          "Notion-Version": NOTION_VERSION,
-          "Content-Type": "application/json",
+    let response: Response;
+
+    try {
+      response = await fetch(
+        `${NOTION_API_BASE}/databases/${databaseId}/query`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Notion-Version": NOTION_VERSION,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            page_size: 100,
+            start_cursor: cursor ?? undefined,
+          }),
+          next: { revalidate: 900 },
         },
-        body: JSON.stringify({
-          page_size: 100,
-          start_cursor: cursor ?? undefined,
-        }),
-        next: { revalidate: 900 },
-      },
-    );
+      );
+    } catch (error) {
+      logNotionDebug("Network error while querying Notion database.", {
+        databaseId,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return [];
+    }
 
     if (!response.ok) {
+      const responseBody = await response.text();
+      logNotionDebug("Notion API returned non-OK response.", {
+        databaseId,
+        status: response.status,
+        statusText: response.statusText,
+        body: responseBody.slice(0, 500),
+      });
       return [];
     }
 
@@ -310,21 +402,34 @@ function buildUnitFromNotion(page: NotionPage): UnitSeed | null {
   }
 
   const properties = page.properties;
-  const name = propertyText(getPropertyByName(properties, ["Name", "Title", "name", "title"]));
+  const name = propertyText(getPropertyByName(properties, ["Name", "Title", "name", "title", "Unit"]));
 
   if (!name) {
     return null;
   }
 
   const spellIds = propertyRelationIds(getPropertyByName(properties, ["Spells", "Spell", "spells", "spell"]));
+  const hp = propertyNumber(getPropertyByName(properties, ["HP", "Health", "hp", "health"]));
+  const dmg = propertyNumber(getPropertyByName(properties, ["Damage", "dmg", "damage"]));
+  const speed = propertyNumber(getPropertyByName(properties, ["Speed", "speed"]));
+  const imageUrl =
+    propertyFileUrl(
+      getPropertyByName(properties, [
+        "Image",
+        "Unit Image",
+        "Artwork",
+        "image",
+        "unit image",
+        "artwork",
+      ]),
+    ) ||
+    propertyUrl(
+      getPropertyByName(properties, ["Image URL", "image url", "Image", "image"]),
+    );
   const description = propertyText(getPropertyByName(properties, ["Description", "Excerpt", "description", "excerpt"]));
   const effects = propertyText(getPropertyByName(properties, ["Effects", "Effect", "effects", "effect"]));
 
-  const gold = propertyNumber(getPropertyByName(properties, ["Gold", "Cost Gold", "gold", "cost gold"]));
-  const mana = propertyNumber(getPropertyByName(properties, ["Mana", "Cost Mana", "mana", "cost mana"]));
-  const influence = propertyNumber(
-    getPropertyByName(properties, ["Influence", "Cost Influence", "influence", "cost influence"]),
-  );
+  const cost = propertyNumber(getPropertyByName(properties, ["Gold", "Cost Gold", "gold", "cost gold", "cost", "Cost"]));
 
   return {
     id: page.id,
@@ -332,7 +437,17 @@ function buildUnitFromNotion(page: NotionPage): UnitSeed | null {
     spellIds,
     description: description || "No description available.",
     effects: effects || "No effect listed.",
-    cost: { gold, mana, influence },
+    imageUrl: imageUrl || null,
+    stats: {
+      hp,
+      damage: dmg,
+      speed,
+    },
+    cost: {
+      gold: cost,
+      mana: 0,
+      influence: 0,
+    },
   };
 }
 
@@ -443,4 +558,20 @@ export async function getNotionShopUnits(roomId: string): Promise<ItemSeed[]> {
       };
     })
     .filter((item): item is ItemSeed => item !== null);
+}
+
+export function getRandomUnit(
+  pool: UnitSeed[],
+  excludeIds: string[],
+  random: () => number = Math.random,
+): UnitSeed | null {
+  const excluded = new Set(excludeIds);
+  const available = pool.filter((unit) => !excluded.has(unit.id));
+
+  if (available.length === 0) {
+    return null;
+  }
+
+  const index = Math.floor(random() * available.length);
+  return available[index] ?? null;
 }

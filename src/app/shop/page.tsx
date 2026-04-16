@@ -1,9 +1,8 @@
 import Link from "next/link";
-import { ShopClient } from "@/components/shop-client";
+import { Shop } from "@/components/Shop";
 import { getPlayerById } from "@/lib/mock-data";
-import { getNotionShopUnits } from "@/lib/notion";
+import { getNotionUnits } from "@/lib/notion";
 import { getRoomSession } from "@/lib/session";
-import { getDailyShopUnits } from "@/lib/shop-selection";
 
 export default async function ShopPage() {
   const session = await getRoomSession();
@@ -30,8 +29,7 @@ export default async function ShopPage() {
     );
   }
 
-  const notionUnits = await getNotionShopUnits(session.roomId);
-  const dailyUnits = getDailyShopUnits(session.roomId, notionUnits, 3);
+  const notionUnits = await getNotionUnits();
 
-  return <ShopClient player={player} items={dailyUnits} />;
+  return <Shop player={player} roomId={session.roomId} units={notionUnits} />;
 }

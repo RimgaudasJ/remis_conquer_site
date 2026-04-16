@@ -17,18 +17,29 @@ type SnapshotCacheEntry = {
 };
 
 const snapshotCache = new Map<string, SnapshotCacheEntry>();
+const initialSnapshotCache = new Map<string, PersistedState>();
 
 function storageKey(playerId: string) {
   return `remis:player:${playerId}`;
 }
 
 function initialState(player: PlayerSeed): PersistedState {
-  return {
+  const key = storageKey(player.id);
+  const cached = initialSnapshotCache.get(key);
+
+  if (cached) {
+    return cached;
+  }
+
+  const snapshot = {
     resources: player.resources,
     inventory: player.inventory,
     counters: player.counters,
     statuses: player.statuses,
   };
+
+  initialSnapshotCache.set(key, snapshot);
+  return snapshot;
 }
 
 function getSnapshot(player: PlayerSeed): PersistedState {

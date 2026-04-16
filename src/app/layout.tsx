@@ -45,7 +45,10 @@ export default async function RootLayout({
       lang="en"
       className={`${sora.variable} ${chakra.variable} h-full antialiased`}
     >
-      <body className="min-h-full bg-background text-foreground">
+      <body
+        suppressHydrationWarning
+        className="min-h-full bg-background text-foreground"
+      >
         <div className="relative min-h-screen overflow-hidden">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(91,232,255,0.18),transparent_30%),radial-gradient(circle_at_bottom,rgba(127,86,217,0.18),transparent_25%)]" />
           <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/50 to-transparent" />
