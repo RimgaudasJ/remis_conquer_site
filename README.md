@@ -16,6 +16,8 @@ npm install
 SESSION_SECRET=replace-with-long-random-secret
 NOTION_API_KEY=replace-with-your-notion-integration-key
 NOTION_WIKI_DATABASE_ID=replace-with-your-notion-database-id
+NOTION_UNITS_DATABASE_ID=optional-units-database-id
+NOTION_SPELLS_DATABASE_ID=optional-spells-database-id
 ```
 
 3. Start the development server.
@@ -30,6 +32,7 @@ npm run dev
 
 - Wiki list and wiki detail pages read from the Notion wiki database.
 - Shop stock is generated from those same Notion wiki entries.
+- If a dedicated Units database is configured, shop stock comes from Units instead.
 - Shop shows up to 3 deterministic random units per room per UTC day.
 - If fewer than 3 valid Notion entries exist, the shop shows the available count.
 

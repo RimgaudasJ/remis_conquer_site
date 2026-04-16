@@ -17,7 +17,9 @@ type NotionProperty = {
   title?: NotionRichText[];
   rich_text?: NotionRichText[];
   select?: { name?: string } | null;
+  multi_select?: { name?: string }[];
   number?: number | null;
+  relation?: { id: string }[];
 };
 
 type NotionPage = {
@@ -31,20 +33,46 @@ type NotionQueryResponse = {
   next_cursor?: string | null;
 };
 
+export type SpellSeed = {
+  id: string;
+  name: string;
+  category: string[];
+  damage: number;
+};
+
+export type UnitSeed = {
+  id: string;
+  name: string;
+  spellIds: string[];
+  description: string;
+  effects: string;
+  cost: {
+    gold: number;
+    mana: number;
+    influence: number;
+  };
+};
+
 function getEnv(name: string) {
   const value = process.env[name]?.trim();
   return value ? value : null;
 }
 
-function getNotionConfig() {
+function getNotionApiKey() {
   const apiKey = getEnv("NOTION_API_KEY");
-  const wikiDatabaseId = getEnv("NOTION_WIKI_DATABASE_ID");
+  return apiKey || null;
+}
 
-  if (!apiKey || !wikiDatabaseId) {
-    return null;
+function getDatabaseId(names: string[]) {
+  for (const name of names) {
+    const value = getEnv(name);
+
+    if (value) {
+      return value;
+    }
   }
 
-  return { apiKey, wikiDatabaseId };
+  return null;
 }
 
 function assertWikiCategory(value: string | undefined): WikiCategory {
@@ -112,6 +140,22 @@ function propertyNumber(property?: NotionProperty) {
   return Number.isFinite(parsed) ? Math.max(0, Math.trunc(parsed)) : 0;
 }
 
+function propertyMultiSelect(property?: NotionProperty): string[] {
+  if (!property || property.type !== "multi_select") {
+    return [];
+  }
+
+  return property.multi_select?.map((opt) => opt.name?.trim() ?? "").filter(Boolean) ?? [];
+}
+
+function propertyRelationIds(property?: NotionProperty): string[] {
+  if (!property || property.type !== "relation") {
+    return [];
+  }
+
+  return property.relation?.map((relation) => relation.id).filter(Boolean) ?? [];
+}
+
 function slugify(input: string) {
   return input
     .toLowerCase()
@@ -160,22 +204,56 @@ function buildWikiPageFromNotion(page: NotionPage): WikiPageSeed | null {
 }
 
 async function queryWikiDatabase(): Promise<NotionPage[]> {
-  const config = getNotionConfig();
+  const apiKey = getNotionApiKey();
+  const wikiDatabaseId = getDatabaseId(["NOTION_WIKI_DATABASE_ID"]);
 
-  if (!config) {
+  if (!apiKey || !wikiDatabaseId) {
     return [];
   }
+
+  return queryDatabase(wikiDatabaseId, apiKey);
+}
+
+async function querySpellDatabase(): Promise<NotionPage[]> {
+  const apiKey = getNotionApiKey();
+  const spellDatabaseId = getDatabaseId([
+    "NOTION_SPELLS_DATABASE_ID",
+    "NOTION_SPELL_DATABASE_ID",
+  ]);
+
+  if (!apiKey || !spellDatabaseId) {
+    return [];
+  }
+
+  return queryDatabase(spellDatabaseId, apiKey);
+}
+
+async function queryUnitDatabase(): Promise<NotionPage[]> {
+  const apiKey = getNotionApiKey();
+  const unitDatabaseId = getDatabaseId([
+    "NOTION_UNITS_DATABASE_ID",
+    "NOTION_UNIT_DATABASE_ID",
+  ]);
+
+  if (!apiKey || !unitDatabaseId) {
+    return [];
+  }
+
+  return queryDatabase(unitDatabaseId, apiKey);
+}
+
+async function queryDatabase(databaseId: string, apiKey: string): Promise<NotionPage[]> {
 
   const allPages: NotionPage[] = [];
   let cursor: string | null = null;
 
   for (;;) {
     const response = await fetch(
-      `${NOTION_API_BASE}/databases/${config.wikiDatabaseId}/query`,
+      `${NOTION_API_BASE}/databases/${databaseId}/query`,
       {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${config.apiKey}`,
+          Authorization: `Bearer ${apiKey}`,
           "Notion-Version": NOTION_VERSION,
           "Content-Type": "application/json",
         },
@@ -203,6 +281,72 @@ async function queryWikiDatabase(): Promise<NotionPage[]> {
   }
 }
 
+function buildSpellFromNotion(page: NotionPage): SpellSeed | null {
+  if (!page.properties) {
+    return null;
+  }
+
+  const properties = page.properties;
+  const name = propertyText(getPropertyByName(properties, ["Name", "Title", "name", "title"]));
+
+  if (!name) {
+    return null;
+  }
+
+  const category = propertyMultiSelect(getPropertyByName(properties, ["Category", "Tags", "category", "tags"]));
+  const damage = propertyNumber(getPropertyByName(properties, ["Damage", "damage"]));
+
+  return {
+    id: page.id,
+    name,
+    category,
+    damage,
+  };
+}
+
+function buildUnitFromNotion(page: NotionPage): UnitSeed | null {
+  if (!page.properties) {
+    return null;
+  }
+
+  const properties = page.properties;
+  const name = propertyText(getPropertyByName(properties, ["Name", "Title", "name", "title"]));
+
+  if (!name) {
+    return null;
+  }
+
+  const spellIds = propertyRelationIds(getPropertyByName(properties, ["Spells", "Spell", "spells", "spell"]));
+  const description = propertyText(getPropertyByName(properties, ["Description", "Excerpt", "description", "excerpt"]));
+  const effects = propertyText(getPropertyByName(properties, ["Effects", "Effect", "effects", "effect"]));
+
+  const gold = propertyNumber(getPropertyByName(properties, ["Gold", "Cost Gold", "gold", "cost gold"]));
+  const mana = propertyNumber(getPropertyByName(properties, ["Mana", "Cost Mana", "mana", "cost mana"]));
+  const influence = propertyNumber(
+    getPropertyByName(properties, ["Influence", "Cost Influence", "influence", "cost influence"]),
+  );
+
+  return {
+    id: page.id,
+    name,
+    spellIds,
+    description: description || "No description available.",
+    effects: effects || "No effect listed.",
+    cost: { gold, mana, influence },
+  };
+}
+
+function buildShopItemFromUnit(unit: UnitSeed, roomId: string): ItemSeed {
+  return {
+    id: `notion-unit-${unit.id}`,
+    roomId,
+    name: unit.name,
+    description: unit.description,
+    effects: unit.effects,
+    cost: unit.cost,
+  };
+}
+
 export async function getNotionWikiPages(): Promise<WikiPageSeed[]> {
   const pages = await queryWikiDatabase();
 
@@ -216,34 +360,87 @@ export async function getNotionWikiPageBySlug(slug: string): Promise<WikiPageSee
   return pages.find((page) => page.slug === slug) ?? null;
 }
 
-function buildShopItemFromNotion(page: NotionPage, roomId: string): ItemSeed | null {
-  const wikiPage = buildWikiPageFromNotion(page);
+export async function getNotionSpells(): Promise<SpellSeed[]> {
+  const spellPages = await querySpellDatabase();
 
-  if (!wikiPage || !page.properties) {
+  return spellPages
+    .map(buildSpellFromNotion)
+    .filter((spell): spell is SpellSeed => spell !== null);
+}
+
+export async function getNotionUnits(): Promise<UnitSeed[]> {
+  const unitPages = await queryUnitDatabase();
+
+  return unitPages
+    .map(buildUnitFromNotion)
+    .filter((unit): unit is UnitSeed => unit !== null);
+}
+
+export function getSpellsByCategory(spells: SpellSeed[], category: string): SpellSeed[] {
+  const normalized = category.trim().toLowerCase();
+
+  if (!normalized) {
+    return [];
+  }
+
+  return spells.filter((spell) =>
+    spell.category.some((entry) => entry.toLowerCase() === normalized),
+  );
+}
+
+export function getRandomSpellByCategory(
+  spells: SpellSeed[],
+  category: string,
+  random: () => number = Math.random,
+): SpellSeed | null {
+  const pool = getSpellsByCategory(spells, category);
+
+  if (pool.length === 0) {
     return null;
   }
 
-  const properties = page.properties;
-  const gold = propertyNumber(getPropertyByName(properties, ["Gold", "gold", "Cost Gold", "cost gold"]));
-  const mana = propertyNumber(getPropertyByName(properties, ["Mana", "mana", "Cost Mana", "cost mana"]));
-  const influence = propertyNumber(
-    getPropertyByName(properties, ["Influence", "influence", "Cost Influence", "cost influence"]),
-  );
+  const index = Math.floor(random() * pool.length);
+  return pool[index] ?? null;
+}
 
-  return {
-    id: `notion-${wikiPage.id}`,
-    roomId,
-    name: wikiPage.title,
-    description: wikiPage.excerpt,
-    effects: wikiPage.body[0] ?? "No unit effect listed.",
-    cost: { gold, mana, influence },
-  };
+export async function getNotionUnitsWithSpells() {
+  const [units, spells] = await Promise.all([getNotionUnits(), getNotionSpells()]);
+  const spellById = new Map(spells.map((spell) => [spell.id, spell]));
+
+  return units.map((unit) => ({
+    ...unit,
+    spells: unit.spellIds
+      .map((spellId) => spellById.get(spellId))
+      .filter((spell): spell is SpellSeed => spell !== undefined),
+  }));
 }
 
 export async function getNotionShopUnits(roomId: string): Promise<ItemSeed[]> {
+  const units = await getNotionUnits();
+
+  if (units.length > 0) {
+    return units.map((unit) => buildShopItemFromUnit(unit, roomId));
+  }
+
+  // Backward-compatible fallback while migrating older setups that only have wiki data.
   const pages = await queryWikiDatabase();
 
   return pages
-    .map((page) => buildShopItemFromNotion(page, roomId))
+    .map((page) => {
+      const wikiPage = buildWikiPageFromNotion(page);
+
+      if (!wikiPage) {
+        return null;
+      }
+
+      return {
+        id: `notion-${wikiPage.id}`,
+        roomId,
+        name: wikiPage.title,
+        description: wikiPage.excerpt,
+        effects: wikiPage.body[0] ?? "No unit effect listed.",
+        cost: { gold: 0, mana: 0, influence: 0 },
+      };
+    })
     .filter((item): item is ItemSeed => item !== null);
 }
