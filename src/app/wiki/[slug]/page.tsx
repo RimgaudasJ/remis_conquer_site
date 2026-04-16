@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import { getWikiPageBySlug } from "@/lib/mock-data";
+import { getNotionWikiPageBySlug } from "@/lib/notion";
 
 export default async function WikiDetailPage({
   params,
@@ -7,7 +7,7 @@ export default async function WikiDetailPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const page = getWikiPageBySlug(slug);
+  const page = await getNotionWikiPageBySlug(slug);
 
   if (!page) {
     notFound();

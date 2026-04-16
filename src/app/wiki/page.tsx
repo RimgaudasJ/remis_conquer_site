@@ -1,7 +1,10 @@
 import Link from "next/link";
-import { demoWikiPages, getWikiCategories } from "@/lib/mock-data";
+import { getNotionWikiPages } from "@/lib/notion";
 
-export default function WikiPage() {
+export default async function WikiPage() {
+  const pages = await getNotionWikiPages();
+  const categories = Array.from(new Set(pages.map((page) => page.category)));
+
   return (
     <div className="grid gap-6">
       <section className="panel rounded-[2rem] p-6 sm:p-8">
@@ -15,7 +18,7 @@ export default function WikiPage() {
           page structure.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          {getWikiCategories().map((category) => (
+          {categories.map((category) => (
             <span
               key={category}
               className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm text-slate-200"
@@ -27,7 +30,7 @@ export default function WikiPage() {
       </section>
 
       <section className="grid gap-4 md:grid-cols-2">
-        {demoWikiPages.map((page) => (
+        {pages.map((page) => (
           <Link
             key={page.id}
             href={`/wiki/${page.slug}`}
@@ -40,6 +43,11 @@ export default function WikiPage() {
             <p className="mt-3 text-sm leading-7 text-slate-300">{page.excerpt}</p>
           </Link>
         ))}
+        {pages.length === 0 ? (
+          <article className="panel rounded-[1.75rem] p-5 text-sm leading-7 text-slate-300 md:col-span-2">
+            No wiki entries are currently available from Notion.
+          </article>
+        ) : null}
       </section>
     </div>
   );
