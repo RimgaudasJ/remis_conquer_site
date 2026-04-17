@@ -2,7 +2,17 @@ import "server-only";
 
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
-import { demoRoom, getPlayerById } from "@/lib/mock-data";
+
+type SessionPlayer = {
+  id: string;
+  roomId: string;
+  name: string;
+};
+
+type SessionRoom = {
+  id: string;
+  code: string;
+};
 
 const ROOM_SESSION_COOKIE = "remis-room-session";
 const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 14;
@@ -78,16 +88,10 @@ async function setSignedSession(payload: SessionPayload) {
   });
 }
 
-export async function createPlayerSession(playerId: string) {
-  const player = getPlayerById(playerId);
-
-  if (!player) {
-    throw new Error("Player not found for session creation.");
-  }
-
+export async function createPlayerSession(player: SessionPlayer, roomCode: string) {
   await setSignedSession({
     roomId: player.roomId,
-    roomCode: demoRoom.code,
+    roomCode,
     role: "player",
     playerId: player.id,
     playerName: player.name,
@@ -95,10 +99,10 @@ export async function createPlayerSession(playerId: string) {
   });
 }
 
-export async function createGameMasterSession() {
+export async function createGameMasterSession(room: SessionRoom) {
   await setSignedSession({
-    roomId: demoRoom.id,
-    roomCode: demoRoom.code,
+    roomId: room.id,
+    roomCode: room.code,
     role: "gm",
     exp: Date.now() + SESSION_TTL_MS,
   });

@@ -7,11 +7,23 @@ import {
   createGameMasterSession,
   createPlayerSession,
 } from "@/lib/session";
-import { demoRoom, findPlayerByName, getRoomByCode } from "@/lib/mock-data";
+import {
+  createRoom,
+  findOrCreatePlayerInRoom,
+  findRoomByCode,
+  verifyRoomGMCode,
+} from "@/lib/room-store";
 
 export type JoinActionState = {
   error?: string;
+  success?: string;
+  roomCode?: string;
+  gmCode?: string;
 };
+
+const createRoomSchema = z.object({
+  roomName: z.string().trim().min(2).max(48),
+});
 
 const playerJoinSchema = z.object({
   roomCode: z.string().trim().min(4).max(12),
@@ -22,6 +34,27 @@ const gmJoinSchema = z.object({
   roomCode: z.string().trim().min(4).max(12),
   gmCode: z.string().trim().min(4).max(24),
 });
+
+export async function createRoomAction(
+  _previousState: JoinActionState | undefined,
+  formData: FormData,
+): Promise<JoinActionState | undefined> {
+  const parsed = createRoomSchema.safeParse({
+    roomName: formData.get("roomName"),
+  });
+
+  if (!parsed.success) {
+    return { error: "Enter a valid room name." };
+  }
+
+  const { room, gmCode } = createRoom(parsed.data.roomName);
+
+  return {
+    success: "Room created. Share the room code with players.",
+    roomCode: room.code,
+    gmCode,
+  };
+}
 
 export async function joinPlayerRoom(
   _previousState: JoinActionState | undefined,
@@ -36,22 +69,26 @@ export async function joinPlayerRoom(
     return { error: "Enter a valid room code and player name." };
   }
 
-  const room = getRoomByCode(parsed.data.roomCode);
+  const room = findRoomByCode(parsed.data.roomCode);
 
   if (!room) {
     return { error: "Room code not recognized." };
   }
 
-  const player = findPlayerByName(room.id, parsed.data.playerName);
+  const player = findOrCreatePlayerInRoom(room.id, parsed.data.playerName);
 
   if (!player) {
-    return {
-      error:
-        "Player name not found in this room yet. Use one of the seeded demo players for now: Astra, Boros, or Nyx.",
-    };
+    return { error: "Could not create or resolve player for this room." };
   }
 
-  await createPlayerSession(player.id);
+  await createPlayerSession(
+    {
+      id: player.id,
+      roomId: player.roomId,
+      name: player.name,
+    },
+    room.code,
+  );
   redirect("/dashboard");
 }
 
@@ -68,14 +105,13 @@ export async function joinGameMasterRoom(
     return { error: "Enter the room code and GM code." };
   }
 
-  if (
-    parsed.data.roomCode.trim().toUpperCase() !== demoRoom.code ||
-    parsed.data.gmCode.trim().toUpperCase() !== demoRoom.gmCode
-  ) {
+  const room = findRoomByCode(parsed.data.roomCode);
+
+  if (!room || !verifyRoomGMCode(room, parsed.data.gmCode)) {
     return { error: "GM credentials do not match this room." };
   }
 
-  await createGameMasterSession();
+  await createGameMasterSession({ id: room.id, code: room.code });
   redirect("/gm");
 }
 

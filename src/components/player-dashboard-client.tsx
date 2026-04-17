@@ -1,191 +1,205 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { usePlayerState } from "@/lib/player-state";
-import {
-  formatCost,
-  getItemById,
-  type PlayerSeed,
-  type ResourceKey,
-} from "@/lib/mock-data";
+import type { PlayerSeed } from "@/lib/mock-data";
+import type { UnitSeed, SpellSeed } from "@/lib/notion";
 
-function ResourceCard({
-  label,
-  value,
-  onAdjust,
+export function PlayerDashboardClient({
+  player,
+  availableUnits,
+  availableSpells,
 }: {
-  label: ResourceKey;
-  value: number;
-  onAdjust: (delta: number) => void;
+  player: PlayerSeed;
+  availableUnits: UnitSeed[];
+  availableSpells: SpellSeed[];
 }) {
-  return (
-    <div className="rounded-3xl border border-white/10 bg-white/5 p-4">
-      <p className="eyebrow text-xs text-cyan-200/65">{label}</p>
-      <div className="mt-3 flex items-center justify-between gap-3">
-        <span className="font-display text-3xl uppercase tracking-[0.12em] text-white">
-          {value}
-        </span>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => onAdjust(-1)}
-            className="touch-button rounded-full border border-white/10 bg-slate-950/70 px-3 text-lg text-white transition hover:border-cyan-300/45 hover:text-cyan-100"
-          >
-            -
-          </button>
-          <button
-            type="button"
-            onClick={() => onAdjust(1)}
-            className="touch-button rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 text-lg text-cyan-100 transition hover:bg-cyan-300/20"
-          >
-            +
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+  const { state, adjustResource } = usePlayerState(player);
+  const [ownedUnits, setOwnedUnits] = useState<UnitSeed[]>([]);
+  const [ownedSpells, setOwnedSpells] = useState<SpellSeed[]>([]);
+  const [selectedUnitId, setSelectedUnitId] = useState<string>("");
+  const [selectedSpellId, setSelectedSpellId] = useState<string>("");
 
-export function PlayerDashboardClient({ player }: { player: PlayerSeed }) {
-  const { state, adjustCounter, adjustResource, reset } = usePlayerState(player);
+  // Initialize from player's initial units/spells (mock: first unit + first 2 spells)
+  useEffect(() => {
+    const initialUnits: UnitSeed[] = [];
+    const initialSpells: SpellSeed[] = [];
+
+    if (availableUnits.length > 0) {
+      initialUnits.push(availableUnits[0]);
+    }
+    if (availableSpells.length > 1) {
+      initialSpells.push(availableSpells[0], availableSpells[1]);
+    } else if (availableSpells.length === 1) {
+      initialSpells.push(availableSpells[0]);
+    }
+
+    setOwnedUnits(initialUnits);
+    setOwnedSpells(initialSpells);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function addUnit() {
+    if (!selectedUnitId) return;
+    const unit = availableUnits.find((u) => u.id === selectedUnitId);
+    if (unit && !ownedUnits.find((u) => u.id === unit.id)) {
+      setOwnedUnits([...ownedUnits, unit]);
+      setSelectedUnitId("");
+    }
+  }
+
+  function addSpell() {
+    if (!selectedSpellId) return;
+    const spell = availableSpells.find((s) => s.id === selectedSpellId);
+    if (spell && !ownedSpells.find((s) => s.id === spell.id)) {
+      setOwnedSpells([...ownedSpells, spell]);
+      setSelectedSpellId("");
+    }
+  }
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
+    <div className="space-y-6 max-w-4xl">
+      {/* ── Header + Gold ── */}
       <section className="panel rounded-[2rem] p-6">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="eyebrow text-xs text-cyan-200/70">Private View</p>
-            <h2 className="mt-2 font-display text-3xl uppercase tracking-[0.14em] text-white">
-              {player.name}
-            </h2>
-            <p className="mt-2 text-sm leading-7 text-slate-300">
-              Device-local state is enabled for this player session. The UI is ready for
-              a Prisma-backed persistence layer next.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={reset}
-            className="rounded-full border border-white/10 bg-white/5 px-4 py-2 text-sm font-medium text-white/75 transition hover:border-white/20 hover:bg-white/10"
-          >
-            Reset local state
-          </button>
-        </div>
-
-        <div className="mt-6 grid gap-4 sm:grid-cols-3">
-          {(Object.entries(state.resources) as [ResourceKey, number][]).map(([key, value]) => (
-            <ResourceCard
-              key={key}
-              label={key}
-              value={value}
-              onAdjust={(delta) => adjustResource(key, delta)}
-            />
-          ))}
-        </div>
-
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
-            <p className="eyebrow text-xs text-cyan-200/70">Abilities</p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {player.abilities.map((ability) => (
-                <span
-                  key={ability}
-                  className="rounded-full border border-cyan-300/15 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-50"
-                >
-                  {ability}
-                </span>
-              ))}
+        <p className="eyebrow text-xs text-cyan-200/70">{player.name}</p>
+        <div className="mt-4 flex items-center justify-between">
+          <h2 className="font-display text-3xl uppercase tracking-[0.14em] text-white">
+            Player Dashboard
+          </h2>
+          <div className="flex items-center justify-between gap-4 rounded-2xl border border-amber-400/25 bg-amber-400/10 px-6 py-3">
+            <div className="flex items-center gap-3">
+              <span aria-hidden className="text-2xl leading-none">
+                🪙
+              </span>
+              <div>
+                <p className="text-xs uppercase tracking-[0.22em] text-amber-300/70">Gold</p>
+                <p className="font-display text-2xl uppercase tracking-[0.1em] text-amber-200">
+                  {state.resources.gold}
+                </p>
+              </div>
             </div>
-          </div>
-          <div className="rounded-[1.75rem] border border-white/10 bg-white/5 p-5">
-            <p className="eyebrow text-xs text-cyan-200/70">Status Effects</p>
-            <div className="mt-4 grid gap-3">
-              {state.statuses.map((status) => (
-                <div key={status.id} className="rounded-2xl bg-slate-950/60 p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-white">
-                    <span className="status-dot" />
-                    {status.label}
-                  </div>
-                  <p className="mt-2 text-sm leading-7 text-slate-300">{status.detail}</p>
-                </div>
-              ))}
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => adjustResource("gold", -1)}
+                className="touch-button rounded-full border border-white/10 bg-slate-950/70 px-3 text-lg text-white transition hover:border-amber-400/45 hover:text-amber-100"
+              >
+                -
+              </button>
+              <button
+                type="button"
+                onClick={() => adjustResource("gold", 1)}
+                className="touch-button rounded-full border border-amber-400/20 bg-amber-400/10 px-3 text-lg text-amber-100 transition hover:bg-amber-400/20"
+              >
+                +
+              </button>
             </div>
           </div>
         </div>
       </section>
 
-      <div className="grid gap-6">
-        <section className="panel rounded-[2rem] p-6">
-          <p className="eyebrow text-xs text-cyan-200/70">Counters</p>
-          <div className="mt-4 grid gap-4">
-            {state.counters.map((counter) => (
-              <div
-                key={counter.id}
-                className="flex items-center justify-between gap-3 rounded-[1.5rem] border border-white/10 bg-white/5 p-4"
-              >
-                <div>
-                  <p className="text-sm text-slate-300">{counter.label}</p>
-                  <p className="font-display text-3xl uppercase tracking-[0.12em] text-white">
-                    {counter.value}
-                  </p>
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => adjustCounter(counter.id, -1)}
-                    className="touch-button rounded-full border border-white/10 bg-slate-950/70 px-4 text-lg text-white transition hover:border-cyan-300/45 hover:text-cyan-100"
-                  >
-                    -
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => adjustCounter(counter.id, 1)}
-                    className="touch-button rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 text-lg text-cyan-100 transition hover:bg-cyan-300/20"
-                  >
-                    +
-                  </button>
-                </div>
+      {/* ── Units ── */}
+      <section className="panel rounded-[2rem] p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="eyebrow text-xs text-cyan-200/70">Units</p>
+            <h3 className="mt-2 font-display text-2xl uppercase tracking-[0.12em] text-white">
+              {ownedUnits.length} owned
+            </h3>
+          </div>
+          <div className="flex gap-2">
+            <select
+              value={selectedUnitId}
+              onChange={(e) => setSelectedUnitId(e.target.value)}
+              className="rounded-full border border-cyan-300/20 bg-cyan-300/10 px-4 py-2 text-sm text-white transition hover:border-cyan-300/45"
+            >
+              <option value="">Select unit...</option>
+              {availableUnits.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={addUnit}
+              disabled={!selectedUnitId}
+              className="touch-button rounded-full bg-cyan-300 px-6 py-2 text-sm font-semibold text-slate-950 transition disabled:opacity-50 hover:bg-cyan-200"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3">
+          {ownedUnits.map((unit) => (
+            <div key={unit.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <h4 className="font-display text-lg uppercase tracking-[0.1em] text-white">
+                {unit.name}
+              </h4>
+              <p className="mt-2 text-sm text-slate-300">{unit.description}</p>
+              <div className="mt-3 flex gap-4 text-xs text-slate-400">
+                <span>♥ HP {unit.stats.hp}</span>
+                <span>◆ DMG {unit.stats.damage}</span>
+                <span>◈ SPD {unit.stats.speed}</span>
               </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="panel rounded-[2rem] p-6">
-          <div className="flex items-center justify-between gap-3">
-            <div>
-              <p className="eyebrow text-xs text-cyan-200/70">Inventory</p>
-              <p className="mt-2 text-sm leading-7 text-slate-300">Synced to this device.</p>
             </div>
-          </div>
-          <div className="mt-4 grid gap-3">
-            {state.inventory.map((entry) => {
-              const item = getItemById(entry.itemId);
+          ))}
+        </div>
+      </section>
 
-              if (!item) {
-                return null;
-              }
-
-              return (
-                <div key={entry.itemId} className="rounded-[1.5rem] border border-white/10 bg-white/5 p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="font-display text-xl uppercase tracking-[0.1em] text-white">
-                        {item.name}
-                      </p>
-                      <p className="mt-2 text-sm leading-7 text-slate-300">{item.description}</p>
-                    </div>
-                    <span className="rounded-full border border-cyan-300/15 bg-cyan-300/10 px-3 py-2 text-sm text-cyan-50">
-                      x{entry.quantity}
-                    </span>
-                  </div>
-                  <p className="mt-3 text-xs uppercase tracking-[0.2em] text-slate-400">
-                    Cost profile: {formatCost(item.cost)}
-                  </p>
-                </div>
-              );
-            })}
+      {/* ── Spells ── */}
+      <section className="panel rounded-[2rem] p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <p className="eyebrow text-xs text-cyan-200/70">Spells</p>
+            <h3 className="mt-2 font-display text-2xl uppercase tracking-[0.12em] text-white">
+              {ownedSpells.length} known
+            </h3>
           </div>
-        </section>
-      </div>
+          <div className="flex gap-2">
+            <select
+              value={selectedSpellId}
+              onChange={(e) => setSelectedSpellId(e.target.value)}
+              className="rounded-full border border-purple-300/20 bg-purple-300/10 px-4 py-2 text-sm text-white transition hover:border-purple-300/45"
+            >
+              <option value="">Select spell...</option>
+              {availableSpells.map((spell) => (
+                <option key={spell.id} value={spell.id}>
+                  {spell.name}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={addSpell}
+              disabled={!selectedSpellId}
+              className="touch-button rounded-full bg-purple-400 px-6 py-2 text-sm font-semibold text-slate-950 transition disabled:opacity-50 hover:bg-purple-300"
+            >
+              Add
+            </button>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-3">
+          {ownedSpells.map((spell) => (
+            <div key={spell.id} className="rounded-2xl border border-white/10 bg-white/5 p-4">
+              <h4 className="font-display text-lg uppercase tracking-[0.1em] text-white">
+                {spell.name}
+              </h4>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {spell.category.map((cat) => (
+                  <span
+                    key={cat}
+                    className="rounded-full border border-purple-300/15 bg-purple-300/10 px-2 py-1 text-xs text-purple-200"
+                  >
+                    {cat}
+                  </span>
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-slate-400">Damage: {spell.damage}</p>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }

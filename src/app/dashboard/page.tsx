@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { PlayerDashboardClient } from "@/components/player-dashboard-client";
-import { getPlayerById } from "@/lib/mock-data";
+import { getNotionUnits, getNotionSpells } from "@/lib/notion";
+import { getPlayerById } from "@/lib/room-store";
 import { getRoomSession } from "@/lib/session";
 
 export default async function DashboardPage() {
@@ -28,5 +29,7 @@ export default async function DashboardPage() {
     );
   }
 
-  return <PlayerDashboardClient player={player} />;
+  const [units, spells] = await Promise.all([getNotionUnits(), getNotionSpells()]);
+
+  return <PlayerDashboardClient player={player} availableUnits={units} availableSpells={spells} />;
 }

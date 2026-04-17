@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Shop } from "@/components/Shop";
-import { getPlayerById } from "@/lib/mock-data";
 import { getNotionUnits } from "@/lib/notion";
+import { getPlayerById } from "@/lib/room-store";
 import { getRoomSession } from "@/lib/session";
 
 export default async function ShopPage() {
