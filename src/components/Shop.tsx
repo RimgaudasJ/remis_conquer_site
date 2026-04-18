@@ -1,117 +1,85 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import type { ItemSeed, PlayerSeed } from "@/lib/mock-data";
+import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { advanceSharedShopDayAction, buyUnitFromSharedShopAction } from "@/app/actions/shop";
+import type { PlayerSeed } from "@/lib/mock-data";
 import { usePlayerState } from "@/lib/player-state";
 import type { UnitSeed } from "@/lib/notion";
 
-type DraftState = {
-  slots: Array<UnitSeed | null>;
-  remaining: UnitSeed[];
-};
-
-const DRAFT_SIZE = 5;
-
-function shuffleUnits(units: UnitSeed[]) {
-  const result = [...units];
-
-  for (let i = result.length - 1; i > 0; i -= 1) {
-    const swapIndex = Math.floor(Math.random() * (i + 1));
-    [result[i], result[swapIndex]] = [result[swapIndex], result[i]];
-  }
-
-  return result;
-}
-
-function buildInitialDraft(units: UnitSeed[]): DraftState {
-  const shuffled = shuffleUnits(units);
-  const draft = shuffled.slice(0, DRAFT_SIZE);
-  const slots: Array<UnitSeed | null> = Array.from({ length: DRAFT_SIZE }, (_, index) => draft[index] ?? null);
-
-  return {
-    slots,
-    remaining: shuffled.slice(DRAFT_SIZE),
-  };
-}
-
-function toItemSeed(unit: UnitSeed, roomId: string): ItemSeed {
-  return {
-    id: `notion-unit-${unit.id}`,
-    roomId,
-    name: unit.name,
-    description: unit.description,
-    effects: unit.effects,
-    cost: {
-      gold: Math.max(0, unit.cost.gold),
-      mana: 0,
-      influence: 0,
-    },
-  };
-}
-
-function pickReplacement(remaining: UnitSeed[]) {
-  if (remaining.length === 0) {
-    return { unit: null, remaining };
-  }
-
-  const index = Math.floor(Math.random() * remaining.length);
-  const next = remaining[index] ?? null;
-
-  return {
-    unit: next,
-    remaining: remaining.filter((_, entryIndex) => entryIndex !== index),
-  };
-}
-
-export function Shop({ player, roomId, units }: { player: PlayerSeed; roomId: string; units: UnitSeed[] }) {
-  const { state, buyItem, lastPurchase } = usePlayerState(player);
+export function Shop({
+  player,
+  units,
+  day,
+  ownedUnitSourceIds,
+}: {
+  player: PlayerSeed;
+  units: UnitSeed[];
+  day: number;
+  ownedUnitSourceIds: string[];
+}) {
+  const { state, adjustResource, lastPurchase } = usePlayerState(player);
+  const router = useRouter();
   const [brokenImages, setBrokenImages] = useState<Record<string, true>>({});
-  const [draftState, setDraftState] = useState<DraftState | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string>("");
+  const [isPending, startTransition] = useTransition();
+  const ownedSet = new Set(ownedUnitSourceIds);
 
-  // Defer random shuffle to client-only mount to avoid SSR/hydration mismatch.
-  useEffect(() => {
-    setDraftState(buildInitialDraft(units));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const remainingCount = draftState?.remaining.length ?? 0;
-
-  function onBuy(slotIndex: number) {
-    const unit = draftState?.slots[slotIndex];
-
-    if (!unit) {
-      return;
-    }
-
+  function onBuy(unit: UnitSeed) {
     const goldCost = Math.max(0, unit.cost.gold);
 
-    if (state.resources.gold < goldCost) {
+    if (ownedSet.has(unit.id)) {
+      setStatusMessage("You already own this unit.");
       return;
     }
 
-    buyItem(toItemSeed(unit, roomId));
+    if (state.resources.gold < goldCost) {
+      setStatusMessage("Insufficient gold.");
+      return;
+    }
 
-    setDraftState((previous) => {
-      if (!previous) return previous;
-      const current = previous.slots[slotIndex];
+    startTransition(async () => {
+      const result = await buyUnitFromSharedShopAction(unit.id);
+      setStatusMessage(result.message);
 
-      if (!current) {
-        return previous;
+      if (result.ok) {
+        adjustResource("gold", -goldCost);
+        router.refresh();
       }
+    });
+  }
 
-      const replacement = pickReplacement(previous.remaining);
-      const nextSlots = [...previous.slots];
-      nextSlots[slotIndex] = replacement.unit;
+  function onNextDay() {
+    startTransition(async () => {
+      const result = await advanceSharedShopDayAction();
+      setStatusMessage(result.message);
 
-      return {
-        slots: nextSlots,
-        remaining: replacement.remaining,
-      };
+      if (result.ok) {
+        router.refresh();
+      }
     });
   }
 
   return (
-    <div className="flex gap-6 items-start">
+    <div className="space-y-6">
+      <section className="panel flex flex-wrap items-center justify-between gap-4 rounded-[1.8rem] p-5">
+        <div>
+          <p className="eyebrow text-xs text-cyan-200/70">Shop Day</p>
+          <h2 className="mt-1 font-display text-3xl uppercase tracking-[0.14em] text-white">
+            Day {day}
+          </h2>
+        </div>
+        <button
+          type="button"
+          onClick={onNextDay}
+          disabled={isPending}
+          className="touch-button rounded-full border border-cyan-300/25 bg-cyan-300/10 px-5 py-3 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/55 hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {isPending ? "Processing..." : "Next Day"}
+        </button>
+      </section>
+
+      <div className="flex gap-6 items-start">
       {/* ── Sidebar ─────────────────────────────────────────────────── */}
       <aside className="panel sticky top-6 flex w-52 shrink-0 flex-col gap-4 rounded-[2rem] p-5">
         <p className="eyebrow text-[10px] text-cyan-200/50">Draft Shop</p>
@@ -127,80 +95,66 @@ export function Shop({ player, roomId, units }: { player: PlayerSeed; roomId: st
           </div>
         </div>
 
-        {/* Remaining pool — turns red when empty */}
+        {/* Available offers */}
         <div
           className={`flex items-center gap-3 rounded-2xl border px-4 py-3 transition-colors duration-500 ${
-            remainingCount === 0
+            units.length === 0
               ? "border-red-500/40 bg-red-500/10"
               : "border-white/10 bg-white/5"
           }`}
         >
           <span aria-hidden className="text-xl leading-none">
-            {remainingCount === 0 ? "⚠️" : "🎴"}
+            {units.length === 0 ? "⚠️" : "🎴"}
           </span>
           <div>
             <p
               className={`text-[10px] uppercase tracking-[0.22em] ${
-                remainingCount === 0 ? "text-red-400/80" : "text-slate-400"
+                units.length === 0 ? "text-red-400/80" : "text-slate-400"
               }`}
             >
-              Pool Left
+              Offers Left
             </p>
             <p
               className={`font-display text-2xl uppercase tracking-[0.1em] ${
-                remainingCount === 0 ? "text-red-400" : "text-white"
+                units.length === 0 ? "text-red-400" : "text-white"
               }`}
             >
-              {remainingCount}
+              {units.length}
             </p>
           </div>
         </div>
 
         {/* Status hint */}
         <p className="text-[11px] leading-5 text-slate-500">
-          {lastPurchase
-            ? `${lastPurchase} recruited.`
-            : "Buy a unit to replace it instantly from the pool."}
+          {statusMessage ||
+            (lastPurchase
+              ? `${lastPurchase} recruited.`
+              : "Buying a card removes it globally for all players until next day.")}
         </p>
       </aside>
 
       {/* ── Unit grid ───────────────────────────────────────────────── */}
       <section className="grid min-w-0 flex-1 grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
-        {!draftState
-          ? Array.from({ length: DRAFT_SIZE }).map((_, index) => (
-              <div
-                key={`skeleton-${index}`}
-                className="min-h-[30rem] animate-pulse rounded-[1.8rem] border border-white/5 bg-white/[0.02]"
-              />
-            ))
-          : draftState.slots.map((unit, index) => {
-          /* ── Empty slot ── */
-          if (!unit) {
-            return (
-              <article
-                key={`empty-slot-${index}`}
-                className="flex min-h-[30rem] flex-col items-center justify-center rounded-[1.8rem] border border-dashed border-white/10 bg-white/[0.02] p-6 text-center"
-              >
-                <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 font-display text-2xl text-white/20">
-                  ✦
-                </div>
-                <p className="eyebrow text-xs text-slate-600">Slot Empty</p>
-                <p className="mt-2 text-xs text-slate-600">
-                  {remainingCount === 0 ? "Draft pool exhausted." : "Awaiting replacement."}
-                </p>
-              </article>
-            );
-          }
-
+        {units.length === 0 ? (
+          <article className="col-span-full flex min-h-[20rem] flex-col items-center justify-center rounded-[1.8rem] border border-dashed border-white/10 bg-white/[0.02] p-6 text-center">
+            <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full border border-white/10 bg-white/5 font-display text-2xl text-white/20">
+              ✦
+            </div>
+            <p className="eyebrow text-xs text-slate-600">No Units Available</p>
+            <p className="mt-2 text-xs text-slate-600">Start the next day to refresh this shared pool.</p>
+          </article>
+        ) : (
+          units.map((unit) => {
           const goldCost = Math.max(0, unit.cost.gold);
           const affordable = state.resources.gold >= goldCost;
+          const alreadyOwned = ownedSet.has(unit.id);
           const imageMissing = !unit.imageUrl || brokenImages[unit.id];
 
           return (
             <article
               key={unit.id}
               className={`group flex flex-col overflow-hidden rounded-[1.8rem] border transition-all duration-300 ${
-                affordable
+                affordable && !alreadyOwned
                   ? "border-[#D4AF37]/30 bg-gradient-to-b from-white/[0.07] to-slate-900/80 shadow-[0_6px_28px_rgba(2,8,23,0.45)] hover:-translate-y-1.5 hover:scale-[1.015] hover:border-[#D4AF37]/65 hover:shadow-[0_0_32px_rgba(212,175,55,0.14),0_28px_52px_rgba(2,8,23,0.6)]"
                   : "border-white/10 bg-gradient-to-b from-white/[0.02] to-slate-900/80 opacity-55 saturate-0"
               }`}
@@ -271,17 +225,18 @@ export function Shop({ player, roomId, units }: { player: PlayerSeed; roomId: st
                 {/* Recruit button — hidden (opacity 0, non-interactive) when card is locked */}
                 <button
                   type="button"
-                  onClick={() => onBuy(index)}
-                  disabled={!affordable}
+                  onClick={() => onBuy(unit)}
+                  disabled={!affordable || alreadyOwned || isPending}
                   className="touch-button mt-4 w-full rounded-full bg-gradient-to-b from-amber-300 to-amber-500 px-5 py-3 text-sm font-bold uppercase tracking-[0.14em] text-slate-950 shadow-[0_4px_18px_rgba(212,175,55,0.32)] transition-all duration-150 active:translate-y-px active:shadow-none disabled:pointer-events-none disabled:opacity-0"
                 >
-                  Recruit Unit
+                  {alreadyOwned ? "Already Owned" : "Recruit Unit"}
                 </button>
               </div>
             </article>
           );
-        })}
+        }))}
       </section>
+    </div>
     </div>
   );
 }

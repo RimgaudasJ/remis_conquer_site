@@ -31,5 +31,29 @@ export default async function DashboardPage() {
 
   const [units, spells] = await Promise.all([getNotionUnits(), getNotionSpells()]);
 
-  return <PlayerDashboardClient player={player} availableUnits={units} availableSpells={spells} />;
+  return (
+    <div className="space-y-6">
+      <section className="panel rounded-[2rem] p-6">
+        <p className="eyebrow text-xs text-cyan-200/70">Inventory Pages</p>
+        <h2 className="mt-2 font-display text-3xl uppercase tracking-[0.14em] text-white">
+          Manage Units and Spells
+        </h2>
+        <div className="mt-5 flex flex-wrap gap-3">
+          <Link
+            href="/dashboard/units"
+            className="rounded-full border border-cyan-300/25 bg-cyan-300/10 px-5 py-2 text-sm font-semibold text-cyan-100 transition hover:border-cyan-300/55 hover:bg-cyan-300/20"
+          >
+            User Units
+          </Link>
+          <Link
+            href="/dashboard/spells"
+            className="rounded-full border border-white/15 bg-white/5 px-5 py-2 text-sm font-semibold text-white transition hover:border-cyan-300/55 hover:bg-cyan-300/20"
+          >
+            User Spells
+          </Link>
+        </div>
+      </section>
+      <PlayerDashboardClient player={player} availableUnits={units} availableSpells={spells} />
+    </div>
+  );
 }

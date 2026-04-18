@@ -44,6 +44,7 @@ export type SpellSeed = {
   name: string;
   category: string[];
   damage: number;
+  imageUrl: string | null;
 };
 
 export type UnitSeed = {
@@ -387,12 +388,27 @@ function buildSpellFromNotion(page: NotionPage): SpellSeed | null {
 
   const category = propertyMultiSelect(getPropertyByName(properties, ["Category", "Tags", "category", "tags"]));
   const damage = propertyNumber(getPropertyByName(properties, ["Damage", "damage"]));
+  const imageUrl =
+    propertyFileUrl(
+      getPropertyByName(properties, [
+        "Image",
+        "Spell Image",
+        "Artwork",
+        "image",
+        "spell image",
+        "artwork",
+      ]),
+    ) ||
+    propertyUrl(
+      getPropertyByName(properties, ["Image URL", "image url", "Image", "image"]),
+    );
 
   return {
     id: page.id,
     name,
     category,
     damage,
+    imageUrl: imageUrl || null,
   };
 }
 
@@ -410,7 +426,7 @@ function buildUnitFromNotion(page: NotionPage): UnitSeed | null {
 
   const spellIds = propertyRelationIds(getPropertyByName(properties, ["Spells", "Spell", "spells", "spell"]));
   const hp = propertyNumber(getPropertyByName(properties, ["HP", "Health", "hp", "health"]));
-  const dmg = propertyNumber(getPropertyByName(properties, ["Damage", "dmg", "damage"]));
+  const dmg = propertyNumber(getPropertyByName(properties, ["Damage", "dmg", "damage", "Dmg"]));
   const speed = propertyNumber(getPropertyByName(properties, ["Speed", "speed"]));
   const imageUrl =
     propertyFileUrl(

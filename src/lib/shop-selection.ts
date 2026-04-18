@@ -41,16 +41,25 @@ function seededShuffle<T>(input: T[], seed: number) {
   return result;
 }
 
+export function getDailySeededSelection<T>(
+  key: string,
+  entries: T[],
+  count: number,
+  now = new Date(),
+) {
+  if (!key || entries.length <= count) {
+    return entries.slice(0, count);
+  }
+
+  const seed = stringHash(`${key}:${getUtcDateKey(now)}`);
+  return seededShuffle(entries, seed).slice(0, count);
+}
+
 export function getDailyShopUnits(
   roomId: string,
   items: ItemSeed[],
   count = 3,
   now = new Date(),
 ) {
-  if (!roomId || items.length <= count) {
-    return items.slice(0, count);
-  }
-
-  const seed = stringHash(`${roomId}:${getUtcDateKey(now)}`);
-  return seededShuffle(items, seed).slice(0, count);
+  return getDailySeededSelection(roomId, items, count, now);
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { usePlayerState } from "@/lib/player-state";
 import type { PlayerSeed } from "@/lib/mock-data";
 import type { UnitSeed, SpellSeed } from "@/lib/notion";
@@ -19,25 +19,6 @@ export function PlayerDashboardClient({
   const [ownedSpells, setOwnedSpells] = useState<SpellSeed[]>([]);
   const [selectedUnitId, setSelectedUnitId] = useState<string>("");
   const [selectedSpellId, setSelectedSpellId] = useState<string>("");
-
-  // Initialize from player's initial units/spells (mock: first unit + first 2 spells)
-  useEffect(() => {
-    const initialUnits: UnitSeed[] = [];
-    const initialSpells: SpellSeed[] = [];
-
-    if (availableUnits.length > 0) {
-      initialUnits.push(availableUnits[0]);
-    }
-    if (availableSpells.length > 1) {
-      initialSpells.push(availableSpells[0], availableSpells[1]);
-    } else if (availableSpells.length === 1) {
-      initialSpells.push(availableSpells[0]);
-    }
-
-    setOwnedUnits(initialUnits);
-    setOwnedSpells(initialSpells);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   function addUnit() {
     if (!selectedUnitId) return;

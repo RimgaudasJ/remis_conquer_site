@@ -79,6 +79,8 @@ export default async function RootLayout({
                 <NavLink href="/wiki" label="Wiki" />
                 <NavLink href="/join" label="Join Room" />
                 <NavLink href="/dashboard" label="Player Dashboard" />
+                <NavLink href="/dashboard/units" label="User Units" />
+                <NavLink href="/dashboard/spells" label="User Spells" />
                 <NavLink href="/shop" label="Shop" />
                 <NavLink href="/gm" label="GM Console" />
               </nav>

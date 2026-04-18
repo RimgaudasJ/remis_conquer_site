@@ -1,8 +1,16 @@
 import Link from "next/link";
 import { Shop } from "@/components/Shop";
 import { getNotionUnits } from "@/lib/notion";
-import { getPlayerById } from "@/lib/room-store";
+import {
+  getAvailableRoomUnitsForDay,
+  getPlayerById,
+  getPlayerOwnedUnits,
+  getRoomDay,
+} from "@/lib/room-store";
 import { getRoomSession } from "@/lib/session";
+import { getDailySeededSelection } from "@/lib/shop-selection";
+
+const SHOP_SLOTS = 5;
 
 export default async function ShopPage() {
   const session = await getRoomSession();
@@ -30,6 +38,19 @@ export default async function ShopPage() {
   }
 
   const notionUnits = await getNotionUnits();
+  const roomDay = getRoomDay(session.roomId);
+  const availableUnits = getAvailableRoomUnitsForDay(session.roomId, notionUnits);
+  const units = getDailySeededSelection(`${session.roomId}:${roomDay}`, availableUnits, SHOP_SLOTS);
+  const ownedUnitSourceIds = session.playerId
+    ? getPlayerOwnedUnits(session.playerId).map((unit) => unit.sourceUnitId)
+    : [];
 
-  return <Shop player={player} roomId={session.roomId} units={notionUnits} />;
+  return (
+    <Shop
+      player={player}
+      units={units}
+      day={roomDay}
+      ownedUnitSourceIds={ownedUnitSourceIds}
+    />
+  );
 }
